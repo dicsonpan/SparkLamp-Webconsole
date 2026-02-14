@@ -55,6 +55,7 @@ export default function App() {
   
   // New Refs
   const sessionRef = useRef<any>(null); // To access session outside closures
+  const isSessionActive = useRef(false); // Guard for WebSocket state
   const videoCanvasRef = useRef<HTMLCanvasElement>(document.createElement('canvas'));
   const videoIntervalRef = useRef<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -72,7 +73,7 @@ export default function App() {
 
   // --- VISION LOGIC ---
   const sendVideoFrame = async () => {
-    if (!videoRef || !sessionRef.current || !isVideoEnabled) return;
+    if (!videoRef || !sessionRef.current || !isVideoEnabled || !isSessionActive.current) return;
     
     const canvas = videoCanvasRef.current;
     const ctx = canvas.getContext('2d');
@@ -86,14 +87,20 @@ export default function App() {
     ctx.drawImage(videoRef, 0, 0, canvas.width, canvas.height);
 
     canvas.toBlob(async (blob) => {
-      if (blob) {
-        const base64Data = await processImageForGemini(blob);
-        sessionRef.current.sendRealtimeInput({
-          media: {
-            mimeType: 'image/jpeg',
-            data: base64Data
+      if (blob && isSessionActive.current) {
+        try {
+          const base64Data = await processImageForGemini(blob);
+          if (sessionRef.current && isSessionActive.current) {
+            sessionRef.current.sendRealtimeInput({
+              media: {
+                mimeType: 'image/jpeg',
+                data: base64Data
+              }
+            });
           }
-        });
+        } catch (e) {
+          console.error("Failed to send video frame", e);
+        }
       }
     }, 'image/jpeg', 0.6); // 60% quality
   };
@@ -117,29 +124,28 @@ export default function App() {
 
   // --- CHAT & UPLOAD LOGIC ---
   const handleSendMessage = () => {
-    if (!chatInput.trim() || !sessionRef.current) return;
+    if (!chatInput.trim() || !sessionRef.current || !isSessionActive.current) return;
     
-    // Send text as context/input to the model
-    // Note: Live API is audio-centric, but we can send text parts via client content if supported,
-    // or synthesized as "User said..." context. 
-    // Currently, sending text directly into the live session 'turn' is the best approach.
-    sessionRef.current.send({
-        clientContent: {
-            turns: [{
-                role: 'user',
-                parts: [{ text: chatInput }]
-            }],
-            turnComplete: true
-        }
-    });
-
-    addLog(chatInput, 'User', 'info');
-    setChatInput('');
+    try {
+      sessionRef.current.send({
+          clientContent: {
+              turns: [{
+                  role: 'user',
+                  parts: [{ text: chatInput }]
+              }],
+              turnComplete: true
+          }
+      });
+      addLog(chatInput, 'User', 'info');
+      setChatInput('');
+    } catch (e) {
+      addLog("Failed to send message", 'System', 'error');
+    }
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !sessionRef.current) return;
+    if (!file || !sessionRef.current || !isSessionActive.current) return;
 
     addLog(`Uploading image: ${file.name}...`, 'System', 'info');
 
@@ -148,15 +154,19 @@ export default function App() {
     reader.onload = () => {
         const base64String = (reader.result as string).split(',')[1];
         
-        // Send as Realtime Input
-        sessionRef.current.sendRealtimeInput({
-            media: {
-                mimeType: file.type,
-                data: base64String
-            }
-        });
-        
-        addLog(`Image sent to AI`, 'User', 'success');
+        if (isSessionActive.current) {
+          try {
+            sessionRef.current.sendRealtimeInput({
+                media: {
+                    mimeType: file.type,
+                    data: base64String
+                }
+            });
+            addLog(`Image sent to AI`, 'User', 'success');
+          } catch (e) {
+            console.error("Upload failed", e);
+          }
+        }
     };
     reader.readAsDataURL(file);
     
@@ -165,7 +175,7 @@ export default function App() {
   };
 
   const handleSnapshot = () => {
-      if (!videoRef || !sessionRef.current) {
+      if (!videoRef || !sessionRef.current || !isSessionActive.current) {
           addLog("Camera not ready", "System", "error");
           return;
       }
@@ -179,12 +189,18 @@ export default function App() {
       ctx.drawImage(videoRef, 0, 0);
       
       canvas.toBlob(async (blob) => {
-          if (blob) {
-              const base64Data = await processImageForGemini(blob);
-              sessionRef.current.sendRealtimeInput({
-                  media: { mimeType: 'image/jpeg', data: base64Data }
-              });
-              addLog("Snapshot sent to AI", "User", "success");
+          if (blob && isSessionActive.current) {
+              try {
+                const base64Data = await processImageForGemini(blob);
+                if (sessionRef.current && isSessionActive.current) {
+                  sessionRef.current.sendRealtimeInput({
+                      media: { mimeType: 'image/jpeg', data: base64Data }
+                  });
+                  addLog("Snapshot sent to AI", "User", "success");
+                }
+              } catch (e) {
+                 console.error("Snapshot failed", e);
+              }
           }
       }, 'image/jpeg', 0.8);
   };
@@ -256,6 +272,10 @@ export default function App() {
   const startSession = async (currentConfig: AppConfig) => {
     try {
       setConnectionState(ConnectionState.CONNECTING);
+      
+      // Reset state guards
+      isSessionActive.current = false;
+      
       await connectToMqtt(currentConfig.mqttTopic);
       await connectToLiveKit(currentConfig);
 
@@ -286,14 +306,33 @@ export default function App() {
           onopen: () => {
             addLog('Connected to Gemini Brain', 'System', 'success');
             setConnectionState(ConnectionState.CONNECTED);
+            
+            // Mark session as active strictly here
+            isSessionActive.current = true;
+
             if(processorRef.current) {
                processorRef.current.onaudioprocess = (e) => {
+                  // GUARD: Do not process if session is not active
+                  if (!isSessionActive.current) return;
+
                   const inputData = e.inputBuffer.getChannelData(0);
                   const pcmBlob = createPcmBlob(inputData);
+                  
                   sessionPromise.then(session => {
                      // Save session to ref for other functions to use
                      sessionRef.current = session;
-                     session.sendRealtimeInput({ media: pcmBlob });
+                     
+                     // DOUBLE GUARD: Check again before sending inside the promise
+                     if (isSessionActive.current) {
+                        try {
+                          session.sendRealtimeInput({ media: pcmBlob });
+                        } catch(err) {
+                          console.warn("Error sending audio frame, likely connection closing", err);
+                        }
+                     }
+                  }).catch(err => {
+                      // Handle session promise errors gracefully
+                      console.warn("Session promise failed in audio loop", err);
                   });
                };
             }
@@ -317,11 +356,16 @@ export default function App() {
                    publishAction('release');
                    result = { result: "Servos released to idle state" };
                 }
-                sessionPromise.then(session => {
-                  session.sendToolResponse({
-                    functionResponses: { id: fc.id, name: fc.name, response: result }
-                  });
-                });
+                
+                if (isSessionActive.current) {
+                    sessionPromise.then(session => {
+                      if(isSessionActive.current) {
+                          session.sendToolResponse({
+                            functionResponses: { id: fc.id, name: fc.name, response: result }
+                          });
+                      }
+                    });
+                }
               }
             }
             const audioData = msg.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
@@ -351,16 +395,27 @@ export default function App() {
             }
           },
           onclose: () => {
+            // Immediate guard to stop audio loop
+            isSessionActive.current = false;
+            
+            // Disconnect processor immediately to stop firing events
+            if (processorRef.current) {
+                processorRef.current.disconnect();
+                processorRef.current.onaudioprocess = null;
+            }
+            
             addLog('Gemini Disconnected', 'System', 'error');
             setConnectionState(ConnectionState.DISCONNECTED);
             sessionRef.current = null;
           },
           onerror: (err) => {
+            isSessionActive.current = false;
             addLog(`Gemini Error: ${err.message}`, 'System', 'error');
           }
         }
       });
     } catch (e: any) {
+      isSessionActive.current = false;
       addLog(`Setup Error: ${e.message}`, 'System', 'error');
       setConnectionState(ConnectionState.ERROR);
     }
@@ -373,10 +428,18 @@ export default function App() {
   };
   
   const disconnect = () => {
+     isSessionActive.current = false; // Kill guard immediately
+     
      if(mqttClientRef.current) mqttClientRef.current.end();
      if(livekitRoomRef.current) livekitRoomRef.current.disconnect();
      if(audioContextRef.current) audioContextRef.current.close();
-     if(processorRef.current) processorRef.current.disconnect();
+     
+     // Stop processor
+     if(processorRef.current) {
+        processorRef.current.disconnect();
+        processorRef.current.onaudioprocess = null;
+     }
+     
      setConnectionState(ConnectionState.DISCONNECTED);
      sessionRef.current = null;
      window.location.reload(); 
