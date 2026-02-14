@@ -2,8 +2,9 @@
 import { Tool, Type } from "@google/genai";
 
 // MQTT Configuration
-// Defaulting to the user's new secure broker, but this can be changed in settings
-export const DEFAULT_MQTT_BROKER = "wss://mqtt.sparkminds.io:8084/mqtt"; 
+// Use the public EMGX broker over Secure WebSockets (WSS) on port 8084.
+// This is required for browsers (https sites cannot connect to ws:// or mqtt://)
+export const DEFAULT_MQTT_BROKER = "wss://broker.emqx.io:8084/mqtt"; 
 export const DEFAULT_MQTT_TOPIC = "sparklamp/device_01/command"; // Updated to reflect the scalable topic structure
 export const DEFAULT_CLIENT_ID = "SparkLamp-Web-" + Math.random().toString(16).substring(2, 8);
 

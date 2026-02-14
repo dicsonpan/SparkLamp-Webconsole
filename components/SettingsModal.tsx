@@ -15,6 +15,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onConnect, connectionStat
   const [livekitSecret, setLivekitSecret] = useState('');
   
   // MQTT Settings
+  // Ensure we start with a valid default that works in browsers
   const [mqttBroker, setMqttBroker] = useState(DEFAULT_MQTT_BROKER);
   const [mqttTopic, setMqttTopic] = useState(DEFAULT_MQTT_TOPIC);
   
@@ -45,11 +46,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onConnect, connectionStat
 
     // Browser Protocol Validation
     if (val.startsWith('mqtt://')) {
-      setProtocolWarning('Browsers cannot connect via TCP (mqtt://). Please use WebSockets (ws://).');
+      setProtocolWarning('Browsers cannot connect via TCP (mqtt://). Please use WebSockets (ws:// or wss://).');
     } else if (val.startsWith('mqtts://')) {
       setProtocolWarning('Browsers cannot connect via SSL TCP (mqtts://). Please use Secure WebSockets (wss://).');
-    } else if (val.startsWith('http')) {
-      setProtocolWarning('MQTT URL should start with ws:// or wss://, not http.');
+    } else if (window.location.protocol === 'https:' && val.startsWith('ws://')) {
+      setProtocolWarning('Your site is HTTPS, so you MUST use Secure WebSockets (wss://). ws:// will be blocked.');
     } else {
       setProtocolWarning(null);
     }
@@ -58,18 +59,21 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onConnect, connectionStat
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Block invalid protocols
-    if (mqttBroker.startsWith('mqtt:') || mqttBroker.startsWith('mqtts:')) {
-        return; 
+    // Auto-fix: Add /mqtt path if it looks like a standard broker URL and is missing path
+    let finalBrokerUrl = mqttBroker;
+    if (!finalBrokerUrl.includes('/mqtt') && !finalBrokerUrl.endsWith('/')) {
+        // Simple heuristic: if it doesn't have a path, append /mqtt (common for EMQX/Mosquitto)
+        // detailed path check is complex, so we just check for the specific substring
+        finalBrokerUrl = `${finalBrokerUrl}/mqtt`;
     }
 
-    if (googleKey && mqttTopic && mqttBroker) {
+    if (googleKey && mqttTopic && finalBrokerUrl) {
       const config: AppConfig = {
         googleApiKey: googleKey,
         livekitUrl,
         livekitApiKey: livekitKey,
         livekitApiSecret: livekitSecret,
-        mqttBrokerUrl: mqttBroker,
+        mqttBrokerUrl: finalBrokerUrl,
         mqttTopic
       };
       
@@ -188,11 +192,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onConnect, connectionStat
                              <span className="text-yellow-400 whitespace-nowrap">ws://</span>
                              <span>WebSocket (Port 8083/80). Only for localhost/HTTP.</span>
                           </li>
-                          <li className="flex items-start gap-2 opacity-50">
-                             <span className="text-red-400 whitespace-nowrap">mqtt://</span>
-                             <span>TCP. <strong>Not supported in browsers.</strong> Use for ESP32 only.</span>
-                          </li>
                       </ul>
+                      <p className="mt-2 text-slate-500 italic">Example: wss://broker.emqx.io:8084/mqtt</p>
                   </div>
                  </div>
                  
@@ -220,10 +221,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onConnect, connectionStat
 
           <button
             type="submit"
-            disabled={connectionState === ConnectionState.CONNECTING || !!protocolWarning}
+            disabled={connectionState === ConnectionState.CONNECTING}
             className={`w-full py-3 rounded-xl font-bold text-white transition mt-6 shadow-lg ${
-              connectionState === ConnectionState.CONNECTING || !!protocolWarning
-                ? 'bg-gradient-to-r from-blue-700 to-purple-700 opacity-50 cursor-not-allowed'
+              connectionState === ConnectionState.CONNECTING
+                ? 'bg-gradient-to-r from-blue-700 to-purple-700 opacity-50 cursor-wait'
                 : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500'
             }`}
           >
