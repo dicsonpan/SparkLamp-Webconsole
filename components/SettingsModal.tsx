@@ -19,6 +19,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onConnect, connectionStat
   const [mqttTopic, setMqttTopic] = useState(DEFAULT_MQTT_TOPIC);
   
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [protocolWarning, setProtocolWarning] = useState<string | null>(null);
 
   // Load from localStorage on mount
   useEffect(() => {
@@ -38,8 +39,30 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onConnect, connectionStat
     }
   }, []);
 
+  const handleBrokerChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setMqttBroker(val);
+
+    // Browser Protocol Validation
+    if (val.startsWith('mqtt://')) {
+      setProtocolWarning('Browsers cannot connect via TCP (mqtt://). Please use WebSockets (ws://).');
+    } else if (val.startsWith('mqtts://')) {
+      setProtocolWarning('Browsers cannot connect via SSL TCP (mqtts://). Please use Secure WebSockets (wss://).');
+    } else if (val.startsWith('http')) {
+      setProtocolWarning('MQTT URL should start with ws:// or wss://, not http.');
+    } else {
+      setProtocolWarning(null);
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Block invalid protocols
+    if (mqttBroker.startsWith('mqtt:') || mqttBroker.startsWith('mqtts:')) {
+        return; 
+    }
+
     if (googleKey && mqttTopic && mqttBroker) {
       const config: AppConfig = {
         googleApiKey: googleKey,
@@ -138,16 +161,41 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onConnect, connectionStat
              {showAdvanced && (
                <div className="space-y-3">
                  <div>
-                  <label className="block text-xs font-medium text-slate-400 mb-1">MQTT Broker URL (WSS)</label>
+                  <label className="block text-xs font-medium text-slate-400 mb-1">MQTT Broker URL (WebSocket)</label>
                   <input
                     type="text"
                     required
                     value={mqttBroker}
-                    onChange={(e) => setMqttBroker(e.target.value)}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white focus:ring-1 focus:ring-orange-500 outline-none text-sm"
+                    onChange={handleBrokerChange}
+                    className={`w-full bg-slate-800 border rounded-lg px-3 py-2 text-white focus:ring-1 outline-none text-sm ${
+                        protocolWarning ? 'border-red-500 focus:ring-red-500' : 'border-slate-700 focus:ring-orange-500'
+                    }`}
                     placeholder="wss://broker.emqx.io:8084/mqtt"
                   />
+                  {protocolWarning && (
+                      <p className="text-red-400 text-xs mt-1 font-medium">⚠️ {protocolWarning}</p>
+                  )}
+                  
+                  {/* Protocol Examples Helper */}
+                  <div className="mt-3 bg-slate-800/50 rounded-lg p-3 text-[10px] border border-slate-800">
+                      <p className="text-slate-400 font-semibold mb-1">Browser Protocol Support:</p>
+                      <ul className="space-y-1.5 text-slate-500 font-mono">
+                          <li className="flex items-start gap-2">
+                             <span className="text-green-400 whitespace-nowrap">wss://</span>
+                             <span>Secure WebSocket (Port 8084/443). Required for HTTPS sites.</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                             <span className="text-yellow-400 whitespace-nowrap">ws://</span>
+                             <span>WebSocket (Port 8083/80). Only for localhost/HTTP.</span>
+                          </li>
+                          <li className="flex items-start gap-2 opacity-50">
+                             <span className="text-red-400 whitespace-nowrap">mqtt://</span>
+                             <span>TCP. <strong>Not supported in browsers.</strong> Use for ESP32 only.</span>
+                          </li>
+                      </ul>
+                  </div>
                  </div>
+                 
                  <div>
                   <label className="block text-xs font-medium text-slate-400 mb-1">MQTT Topic</label>
                   <input
@@ -172,10 +220,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onConnect, connectionStat
 
           <button
             type="submit"
-            disabled={connectionState === ConnectionState.CONNECTING}
+            disabled={connectionState === ConnectionState.CONNECTING || !!protocolWarning}
             className={`w-full py-3 rounded-xl font-bold text-white transition mt-6 shadow-lg ${
-              connectionState === ConnectionState.CONNECTING
-                ? 'bg-gradient-to-r from-blue-700 to-purple-700 opacity-50 cursor-wait'
+              connectionState === ConnectionState.CONNECTING || !!protocolWarning
+                ? 'bg-gradient-to-r from-blue-700 to-purple-700 opacity-50 cursor-not-allowed'
                 : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500'
             }`}
           >
