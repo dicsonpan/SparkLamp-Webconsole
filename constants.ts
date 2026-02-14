@@ -1,9 +1,11 @@
+
 import { Tool, Type } from "@google/genai";
 
 // MQTT Configuration
-export const DEFAULT_MQTT_BROKER = "wss://broker.emqx.io:8084/mqtt"; // Using Secure WebSocket
-export const DEFAULT_MQTT_TOPIC = "SparkLamp-PRO01";
-export const DEFAULT_CLIENT_ID = "SparkLamp-Web-Controller-" + Math.random().toString(16).substring(2, 8);
+// Defaulting to the user's new secure broker, but this can be changed in settings
+export const DEFAULT_MQTT_BROKER = "wss://mqtt.sparkminds.io:8084/mqtt"; 
+export const DEFAULT_MQTT_TOPIC = "sparklamp/device_01/command"; // Updated to reflect the scalable topic structure
+export const DEFAULT_CLIENT_ID = "SparkLamp-Web-" + Math.random().toString(16).substring(2, 8);
 
 // Action Mapping from Python Code
 export const ACTION_MAPPING: Record<string, string> = {

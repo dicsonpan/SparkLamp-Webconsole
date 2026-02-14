@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AppConfig, ConnectionState } from '../types';
-import { DEFAULT_MQTT_TOPIC } from '../constants';
+import { DEFAULT_MQTT_TOPIC, DEFAULT_MQTT_BROKER } from '../constants';
 
 interface SettingsModalProps {
   onConnect: (config: AppConfig) => void;
@@ -13,7 +13,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onConnect, connectionStat
   const [livekitUrl, setLivekitUrl] = useState('');
   const [livekitKey, setLivekitKey] = useState('');
   const [livekitSecret, setLivekitSecret] = useState('');
+  
+  // MQTT Settings
+  const [mqttBroker, setMqttBroker] = useState(DEFAULT_MQTT_BROKER);
   const [mqttTopic, setMqttTopic] = useState(DEFAULT_MQTT_TOPIC);
+  
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   // Load from localStorage on mount
@@ -27,6 +31,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onConnect, connectionStat
         setLivekitKey(parsed.livekitApiKey || '');
         setLivekitSecret(parsed.livekitApiSecret || '');
         setMqttTopic(parsed.mqttTopic || DEFAULT_MQTT_TOPIC);
+        setMqttBroker(parsed.mqttBrokerUrl || DEFAULT_MQTT_BROKER);
       } catch (e) {
         console.error("Failed to load saved config");
       }
@@ -35,12 +40,13 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onConnect, connectionStat
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (googleKey && mqttTopic) {
+    if (googleKey && mqttTopic && mqttBroker) {
       const config: AppConfig = {
         googleApiKey: googleKey,
         livekitUrl,
         livekitApiKey: livekitKey,
         livekitApiSecret: livekitSecret,
+        mqttBrokerUrl: mqttBroker,
         mqttTopic
       };
       
@@ -64,7 +70,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onConnect, connectionStat
         </div>
         
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Section 1: The Brain */}
+          {/* Section 1: The Brain (Google Gemini) */}
           <div className="space-y-3">
             <h3 className="text-sm font-semibold text-blue-400 uppercase tracking-wider">1. The Brain (Google Gemini)</h3>
             <div>
@@ -130,19 +136,38 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onConnect, connectionStat
              </div>
              
              {showAdvanced && (
-               <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1">MQTT Topic</label>
-                <input
-                  type="text"
-                  required
-                  value={mqttTopic}
-                  onChange={(e) => setMqttTopic(e.target.value)}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white focus:ring-1 focus:ring-orange-500 outline-none text-sm"
-                  placeholder="SparkLamp-PRO01"
-                />
+               <div className="space-y-3">
+                 <div>
+                  <label className="block text-xs font-medium text-slate-400 mb-1">MQTT Broker URL (WSS)</label>
+                  <input
+                    type="text"
+                    required
+                    value={mqttBroker}
+                    onChange={(e) => setMqttBroker(e.target.value)}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white focus:ring-1 focus:ring-orange-500 outline-none text-sm"
+                    placeholder="wss://broker.emqx.io:8084/mqtt"
+                  />
+                 </div>
+                 <div>
+                  <label className="block text-xs font-medium text-slate-400 mb-1">MQTT Topic</label>
+                  <input
+                    type="text"
+                    required
+                    value={mqttTopic}
+                    onChange={(e) => setMqttTopic(e.target.value)}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white focus:ring-1 focus:ring-orange-500 outline-none text-sm"
+                    placeholder="sparklamp/device_id/command"
+                  />
+                  <p className="text-[10px] text-slate-500 mt-1">Use a unique topic per device (e.g. sparklamp/{'{mac_address}'}/command)</p>
+                 </div>
                </div>
              )}
-             {!showAdvanced && <div className="text-xs text-slate-600">Topic: {mqttTopic}</div>}
+             {!showAdvanced && (
+                 <div className="text-xs text-slate-600 space-y-1">
+                     <div>Broker: {mqttBroker}</div>
+                     <div>Topic: {mqttTopic}</div>
+                 </div>
+             )}
           </div>
 
           <button

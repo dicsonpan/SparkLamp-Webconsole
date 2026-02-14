@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import mqtt from 'mqtt';
 import { Room, RoomEvent, VideoPresets, Track, LocalTrackPublication } from 'livekit-client';
@@ -207,10 +208,10 @@ export default function App() {
   };
 
   // --- EXISTING CONNECT LOGIC ---
-  const connectToMqtt = async (topic: string) => {
+  const connectToMqtt = async (brokerUrl: string, topic: string) => {
     return new Promise<void>((resolve, reject) => {
-      addLog(`Connecting to MQTT Broker...`, 'System', 'info');
-      const client = mqtt.connect(DEFAULT_MQTT_BROKER, {
+      addLog(`Connecting to MQTT Broker (${brokerUrl})...`, 'System', 'info');
+      const client = mqtt.connect(brokerUrl, {
         clientId: DEFAULT_CLIENT_ID,
         clean: true,
         connectTimeout: 4000,
@@ -277,7 +278,7 @@ export default function App() {
       // Reset state guards
       isSessionActive.current = false;
       
-      await connectToMqtt(currentConfig.mqttTopic);
+      await connectToMqtt(currentConfig.mqttBrokerUrl, currentConfig.mqttTopic);
       await connectToLiveKit(currentConfig);
 
       audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
