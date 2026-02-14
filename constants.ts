@@ -1,4 +1,4 @@
-import { FunctionDeclaration, Type } from "@google/genai";
+import { Tool, Type } from "@google/genai";
 
 // MQTT Configuration
 export const DEFAULT_MQTT_BROKER = "wss://broker.emqx.io:8084/mqtt"; // Using Secure WebSocket
@@ -94,7 +94,7 @@ export const SYSTEM_INSTRUCTION = `You are SparkLamp, an intelligent, witty, and
 `;
 
 // Tool Definitions
-export const TOOLS = [
+export const TOOLS: Tool[] = [
   {
     functionDeclarations: [
       {
@@ -114,26 +114,14 @@ export const TOOLS = [
       {
         name: 'turn_light_on',
         description: 'Turn ON the lamp\'s main LED light.',
-        parameters: {
-          type: Type.OBJECT,
-          properties: {},
-        },
       },
       {
         name: 'turn_light_off',
         description: 'Turn OFF the lamp\'s main LED light.',
-        parameters: {
-          type: Type.OBJECT,
-          properties: {},
-        },
       },
       {
         name: 'stop_movement',
         description: 'IMMEDIATE STOP. Stops any current movement and holds position.',
-        parameters: {
-          type: Type.OBJECT,
-          properties: {},
-        },
       },
     ],
   },

@@ -110,9 +110,11 @@ export default function App() {
       addLog('Published Camera & Mic to Room', 'LiveKit', 'success');
       
       // Attach local video to UI
-      const tracks = room.localParticipant.videoTracks;
-      if (tracks.size > 0 && videoRef) {
-         const trackPub = Array.from(tracks.values())[0] as LocalTrackPublication;
+      const tracks = Array.from(room.localParticipant.trackPublications.values())
+        .filter(pub => pub.kind === Track.Kind.Video);
+
+      if (tracks.length > 0 && videoRef) {
+         const trackPub = tracks[0] as LocalTrackPublication;
          trackPub.track?.attach(videoRef);
       }
 
@@ -195,7 +197,7 @@ export default function App() {
           },
           onmessage: async (msg: LiveServerMessage) => {
             // 1. Handle Tool Calls
-            if (msg.toolCall) {
+            if (msg.toolCall && msg.toolCall.functionCalls) {
               for (const fc of msg.toolCall.functionCalls) {
                 addLog(`Function: ${fc.name}`, 'AI', 'info');
                 let result = { result: "ok" };
@@ -285,9 +287,11 @@ export default function App() {
   // Effect to attach video element when ready
   useEffect(() => {
     if (livekitRoomRef.current && videoRef) {
-       const tracks = livekitRoomRef.current.localParticipant.videoTracks;
-       if (tracks.size > 0) {
-          const trackPub = Array.from(tracks.values())[0] as LocalTrackPublication;
+       const tracks = Array.from(livekitRoomRef.current.localParticipant.trackPublications.values())
+        .filter(pub => pub.kind === Track.Kind.Video);
+       
+       if (tracks.length > 0) {
+          const trackPub = tracks[0] as LocalTrackPublication;
           trackPub.track?.attach(videoRef);
        }
     }
