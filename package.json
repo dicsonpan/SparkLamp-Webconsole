@@ -10,7 +10,7 @@
   "dependencies": {
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "@google/genai": "^0.1.1",
+    "@google/genai": "*",
     "mqtt": "^5.10.1",
     "livekit-client": "^2.7.0"
   },
