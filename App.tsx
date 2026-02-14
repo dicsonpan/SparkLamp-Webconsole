@@ -219,6 +219,9 @@ export default function App() {
                    publishAction('light_off');
                 } else if (fc.name === 'stop_movement') {
                    publishAction('stop');
+                } else if (fc.name === 'reset_to_idle') {
+                   publishAction('release');
+                   result = { result: "Servos released to idle state" };
                 }
 
                 sessionPromise.then(session => {
@@ -371,19 +374,27 @@ export default function App() {
           </div>
 
           {/* Controls */}
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-4 gap-2">
              {[
-               { cmd: 'wake_up', label: 'Wake Up', color: 'bg-slate-800' },
+               { cmd: 'wake_up', label: 'Wake', color: 'bg-slate-800' },
                { cmd: 'nod', label: 'Nod', color: 'bg-slate-800' },
                { cmd: 'headshake', label: 'Shake', color: 'bg-slate-800' },
                { cmd: 'happy_wiggle', label: 'Happy', color: 'bg-slate-800' },
+               
                { cmd: 'think', label: 'Think', color: 'bg-slate-800' },
-               { cmd: 'turn_light_on', label: 'Light', color: 'bg-amber-500/20 text-amber-300 border-amber-500/30' }
+               { cmd: 'scanning', label: 'Scan', color: 'bg-slate-800' },
+               { cmd: 'shy', label: 'Shy', color: 'bg-slate-800' },
+               { cmd: 'sad', label: 'Sad', color: 'bg-slate-800' },
+
+               { cmd: 'shock', label: 'Shock', color: 'bg-slate-800' },
+               { cmd: 'release', label: 'Relax', color: 'bg-slate-800' },
+               { cmd: 'turn_light_on', label: 'Light On', color: 'bg-amber-500/20 text-amber-300 border-amber-500/30 col-span-2' },
+               { cmd: 'turn_light_off', label: 'Light Off', color: 'bg-slate-800/50 text-slate-400 border-slate-700 col-span-2' }
              ].map((btn) => (
                <button 
                  key={btn.cmd}
                  onClick={() => publishAction(btn.cmd)} 
-                 className={`p-3 rounded-xl text-xs font-semibold border border-slate-700/50 hover:bg-white/5 active:scale-95 transition-all ${btn.color}`}
+                 className={`p-2 rounded-xl text-[10px] font-semibold border border-slate-700/50 hover:bg-white/5 active:scale-95 transition-all flex items-center justify-center ${btn.color}`}
                >
                  {btn.label}
                </button>
