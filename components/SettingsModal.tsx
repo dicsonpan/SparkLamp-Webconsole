@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AppConfig, ConnectionState } from '../types';
-import { DEFAULT_MQTT_TOPIC, DEFAULT_MQTT_BROKER } from '../constants';
+import { DEFAULT_MQTT_TOPIC } from '../constants';
 
 interface SettingsModalProps {
   onConnect: (config: AppConfig) => void;
@@ -13,14 +13,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onConnect, connectionStat
   const [livekitUrl, setLivekitUrl] = useState('');
   const [livekitKey, setLivekitKey] = useState('');
   const [livekitSecret, setLivekitSecret] = useState('');
-  
-  // MQTT Settings
-  // Ensure we start with a valid default that works in browsers
-  const [mqttBroker, setMqttBroker] = useState(DEFAULT_MQTT_BROKER);
   const [mqttTopic, setMqttTopic] = useState(DEFAULT_MQTT_TOPIC);
-  
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const [protocolWarning, setProtocolWarning] = useState<string | null>(null);
+  const [showAdvanced, setShowAdvanced] = useState(true); // Default to true to show Topic input
 
   // Load from localStorage on mount
   useEffect(() => {
@@ -33,47 +27,20 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onConnect, connectionStat
         setLivekitKey(parsed.livekitApiKey || '');
         setLivekitSecret(parsed.livekitApiSecret || '');
         setMqttTopic(parsed.mqttTopic || DEFAULT_MQTT_TOPIC);
-        setMqttBroker(parsed.mqttBrokerUrl || DEFAULT_MQTT_BROKER);
       } catch (e) {
         console.error("Failed to load saved config");
       }
     }
   }, []);
 
-  const handleBrokerChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
-    setMqttBroker(val);
-
-    // Browser Protocol Validation
-    if (val.startsWith('mqtt://')) {
-      setProtocolWarning('Browsers cannot connect via TCP (mqtt://). Please use WebSockets (ws:// or wss://).');
-    } else if (val.startsWith('mqtts://')) {
-      setProtocolWarning('Browsers cannot connect via SSL TCP (mqtts://). Please use Secure WebSockets (wss://).');
-    } else if (window.location.protocol === 'https:' && val.startsWith('ws://')) {
-      setProtocolWarning('Your site is HTTPS, so you MUST use Secure WebSockets (wss://). ws:// will be blocked.');
-    } else {
-      setProtocolWarning(null);
-    }
-  };
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Auto-fix: Add /mqtt path if it looks like a standard broker URL and is missing path
-    let finalBrokerUrl = mqttBroker;
-    if (!finalBrokerUrl.includes('/mqtt') && !finalBrokerUrl.endsWith('/')) {
-        // Simple heuristic: if it doesn't have a path, append /mqtt (common for EMQX/Mosquitto)
-        // detailed path check is complex, so we just check for the specific substring
-        finalBrokerUrl = `${finalBrokerUrl}/mqtt`;
-    }
-
-    if (googleKey && mqttTopic && finalBrokerUrl) {
+    if (googleKey && mqttTopic) {
       const config: AppConfig = {
         googleApiKey: googleKey,
         livekitUrl,
         livekitApiKey: livekitKey,
         livekitApiSecret: livekitSecret,
-        mqttBrokerUrl: finalBrokerUrl,
         mqttTopic
       };
       
@@ -97,7 +64,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onConnect, connectionStat
         </div>
         
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Section 1: The Brain (Google Gemini) */}
+          {/* Section 1: The Brain */}
           <div className="space-y-3">
             <h3 className="text-sm font-semibold text-blue-400 uppercase tracking-wider">1. The Brain (Google Gemini)</h3>
             <div>
@@ -163,60 +130,22 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onConnect, connectionStat
              </div>
              
              {showAdvanced && (
-               <div className="space-y-3">
-                 <div>
-                  <label className="block text-xs font-medium text-slate-400 mb-1">MQTT Broker URL (WebSocket)</label>
-                  <input
-                    type="text"
-                    required
-                    value={mqttBroker}
-                    onChange={handleBrokerChange}
-                    className={`w-full bg-slate-800 border rounded-lg px-3 py-2 text-white focus:ring-1 outline-none text-sm ${
-                        protocolWarning ? 'border-red-500 focus:ring-red-500' : 'border-slate-700 focus:ring-orange-500'
-                    }`}
-                    placeholder="wss://broker.emqx.io:8084/mqtt"
-                  />
-                  {protocolWarning && (
-                      <p className="text-red-400 text-xs mt-1 font-medium">⚠️ {protocolWarning}</p>
-                  )}
-                  
-                  {/* Protocol Examples Helper */}
-                  <div className="mt-3 bg-slate-800/50 rounded-lg p-3 text-[10px] border border-slate-800">
-                      <p className="text-slate-400 font-semibold mb-1">Browser Protocol Support:</p>
-                      <ul className="space-y-1.5 text-slate-500 font-mono">
-                          <li className="flex items-start gap-2">
-                             <span className="text-green-400 whitespace-nowrap">wss://</span>
-                             <span>Secure WebSocket (Port 8084/443). Required for HTTPS sites.</span>
-                          </li>
-                          <li className="flex items-start gap-2">
-                             <span className="text-yellow-400 whitespace-nowrap">ws://</span>
-                             <span>WebSocket (Port 8083/80). Only for localhost/HTTP.</span>
-                          </li>
-                      </ul>
-                      <p className="mt-2 text-slate-500 italic">Example: wss://broker.emqx.io:8084/mqtt</p>
-                  </div>
-                 </div>
-                 
-                 <div>
-                  <label className="block text-xs font-medium text-slate-400 mb-1">MQTT Topic</label>
-                  <input
-                    type="text"
-                    required
-                    value={mqttTopic}
-                    onChange={(e) => setMqttTopic(e.target.value)}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white focus:ring-1 focus:ring-orange-500 outline-none text-sm"
-                    placeholder="sparklamp/device_id/command"
-                  />
-                  <p className="text-[10px] text-slate-500 mt-1">Use a unique topic per device (e.g. sparklamp/{'{mac_address}'}/command)</p>
-                 </div>
+               <div>
+                <label className="block text-xs font-medium text-slate-400 mb-1">MQTT Topic <span className="text-red-400">*</span></label>
+                <input
+                  type="text"
+                  required
+                  value={mqttTopic}
+                  onChange={(e) => setMqttTopic(e.target.value)}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white focus:ring-1 focus:ring-orange-500 outline-none text-sm"
+                  placeholder="e.g. sparklamp/device_01/command"
+                />
+                <p className="text-[10px] text-orange-300 mt-2 bg-orange-950/30 p-2 rounded border border-orange-500/20">
+                  ⚠️ <strong>Important:</strong> This topic must exactly match the topic defined in your ESP32/Lamp firmware code (e.g., <code>const char* mqtt_topic = "...";</code>).
+                </p>
                </div>
              )}
-             {!showAdvanced && (
-                 <div className="text-xs text-slate-600 space-y-1">
-                     <div>Broker: {mqttBroker}</div>
-                     <div>Topic: {mqttTopic}</div>
-                 </div>
-             )}
+             {!showAdvanced && <div className="text-xs text-slate-600">Topic: {mqttTopic}</div>}
           </div>
 
           <button

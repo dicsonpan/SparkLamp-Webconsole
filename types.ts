@@ -1,4 +1,3 @@
-
 export interface MqttConfig {
   brokerUrl: string; // wss://broker.emqx.io:8084/mqtt
   topic: string;
@@ -10,7 +9,6 @@ export interface AppConfig {
   livekitUrl: string;
   livekitApiKey: string;
   livekitApiSecret: string;
-  mqttBrokerUrl: string; // New field for custom broker
   mqttTopic: string;
 }
 

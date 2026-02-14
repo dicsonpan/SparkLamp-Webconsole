@@ -1,9 +1,7 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import mqtt from 'mqtt';
 import { Room, RoomEvent, VideoPresets, Track, LocalTrackPublication } from 'livekit-client';
 import { GoogleGenAI, LiveServerMessage, Modality } from '@google/genai';
-import { Analytics } from '@vercel/analytics/react';
 import { 
   ACTION_MAPPING, 
   DEFAULT_MQTT_BROKER, 
@@ -208,10 +206,10 @@ export default function App() {
   };
 
   // --- EXISTING CONNECT LOGIC ---
-  const connectToMqtt = async (brokerUrl: string, topic: string) => {
+  const connectToMqtt = async (topic: string) => {
     return new Promise<void>((resolve, reject) => {
-      addLog(`Connecting to MQTT Broker (${brokerUrl})...`, 'System', 'info');
-      const client = mqtt.connect(brokerUrl, {
+      addLog(`Connecting to MQTT Broker...`, 'System', 'info');
+      const client = mqtt.connect(DEFAULT_MQTT_BROKER, {
         clientId: DEFAULT_CLIENT_ID,
         clean: true,
         connectTimeout: 4000,
@@ -278,7 +276,7 @@ export default function App() {
       // Reset state guards
       isSessionActive.current = false;
       
-      await connectToMqtt(currentConfig.mqttBrokerUrl, currentConfig.mqttTopic);
+      await connectToMqtt(currentConfig.mqttTopic);
       await connectToLiveKit(currentConfig);
 
       audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
@@ -703,7 +701,6 @@ export default function App() {
         </div>
 
       </main>
-      <Analytics />
     </div>
   );
 }
