@@ -27,6 +27,7 @@ export default function App() {
   const [videoRef, setVideoRef] = useState<HTMLVideoElement | null>(null);
 
   // Refs
+  const configRef = useRef<AppConfig | null>(null); // Fix: Use Ref to avoid stale closure in callbacks
   const mqttClientRef = useRef<mqtt.MqttClient | null>(null);
   const livekitRoomRef = useRef<Room | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -73,12 +74,18 @@ export default function App() {
 
   // 2. Publish to MQTT
   const publishAction = (action: string) => {
-    if (!mqttClientRef.current || !config) return;
+    // Critical Fix: Use configRef.current instead of config state.
+    // The Gemini callback captures the publishAction function from the initial render
+    // where 'config' state is null. Using a Ref bypasses this stale closure.
+    if (!mqttClientRef.current || !configRef.current) {
+      if (!configRef.current) console.warn("Cannot publish: Config is missing");
+      return;
+    }
     
     // Convert generic action name to ESP32 command using map
     const esp32Command = ACTION_MAPPING[action] || action;
     
-    mqttClientRef.current.publish(config.mqttTopic, esp32Command);
+    mqttClientRef.current.publish(configRef.current.mqttTopic, esp32Command);
     addLog(`Sent command: "${esp32Command}"`, 'MQTT', 'info');
     setLastAction(action);
     
@@ -109,9 +116,9 @@ export default function App() {
       await room.localParticipant.enableCameraAndMicrophone();
       addLog('Published Camera & Mic to Room', 'LiveKit', 'success');
       
-      // Attach local video to UI
+      // Attach local video to UI - Fix: Use trackPublications instead of videoTracks
       const tracks = Array.from(room.localParticipant.trackPublications.values())
-        .filter(pub => pub.kind === Track.Kind.Video);
+        .filter((pub: any) => pub.kind === Track.Kind.Video);
 
       if (tracks.length > 0 && videoRef) {
          const trackPub = tracks[0] as LocalTrackPublication;
@@ -272,6 +279,7 @@ export default function App() {
 
   const handleConnect = (newConfig: AppConfig) => {
     setConfig(newConfig);
+    configRef.current = newConfig; // Sync Ref immediately
     startSession(newConfig);
   };
   
@@ -287,8 +295,9 @@ export default function App() {
   // Effect to attach video element when ready
   useEffect(() => {
     if (livekitRoomRef.current && videoRef) {
+       // Fix: Use trackPublications instead of videoTracks
        const tracks = Array.from(livekitRoomRef.current.localParticipant.trackPublications.values())
-        .filter(pub => pub.kind === Track.Kind.Video);
+        .filter((pub: any) => pub.kind === Track.Kind.Video);
        
        if (tracks.length > 0) {
           const trackPub = tracks[0] as LocalTrackPublication;
