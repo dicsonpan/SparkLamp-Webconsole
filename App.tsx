@@ -307,8 +307,6 @@ export default function App() {
             addLog('Connected to Gemini', 'System', 'success');
             setConnectionState(ConnectionState.CONNECTED);
             isSessionActive.current = true;
-            
-            // Audio processor will be set up after session is ready
           },
           onmessage: async (msg: LiveServerMessage) => {
             if (msg.toolCall && msg.toolCall.functionCalls) {
@@ -385,6 +383,9 @@ export default function App() {
       // Wait for session to be ready, then set up audio processor
       const session = await sessionPromise;
       sessionRef.current = session;
+      
+      // Add a small delay to ensure WebSocket is fully ready
+      await new Promise(resolve => setTimeout(resolve, 100));
       
       if(processorRef.current && isSessionActive.current) {
         processorRef.current.onaudioprocess = (e) => {
