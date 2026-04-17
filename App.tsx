@@ -304,37 +304,16 @@ export default function App() {
         },
         callbacks: {
           onopen: () => {
-            addLog('Connected to Gemini Brain', 'System', 'success');
+            addLog('Connected to Gemini', 'System', 'success');
             setConnectionState(ConnectionState.CONNECTED);
-            
-            // Mark session as active strictly here
             isSessionActive.current = true;
-
             if(processorRef.current) {
-               processorRef.current.onaudioprocess = (e) => {
-                  // GUARD: Do not process if session is not active
-                  if (!isSessionActive.current) return;
-
-                  const inputData = e.inputBuffer.getChannelData(0);
-                  const pcmBlob = createPcmBlob(inputData);
-                  
-                  sessionPromise.then(session => {
-                     // Save session to ref for other functions to use
-                     sessionRef.current = session;
-                     
-                     // DOUBLE GUARD: Check again before sending inside the promise
-                     if (isSessionActive.current) {
-                        try {
-                          session.sendRealtimeInput({ media: pcmBlob });
-                        } catch(err) {
-                          console.warn("Error sending audio frame, likely connection closing", err);
-                        }
-                     }
-                  }).catch(err => {
-                      // Handle session promise errors gracefully
-                      console.warn("Session promise failed in audio loop", err);
-                  });
-               };
+              processorRef.current.onaudioprocess = (e) => {
+                if (!isSessionActive.current || !sessionRef.current) return;
+                const inputData = e.inputBuffer.getChannelData(0);
+                const pcmBlob = createPcmBlob(inputData);
+                try { sessionRef.current.sendRealtimeInput({ media: pcmBlob }); } catch(err) {}
+              };
             }
           },
           onmessage: async (msg: LiveServerMessage) => {
@@ -357,14 +336,8 @@ export default function App() {
                    result = { result: "Servos released to idle state" };
                 }
                 
-                if (isSessionActive.current) {
-                    sessionPromise.then(session => {
-                      if(isSessionActive.current) {
-                          session.sendToolResponse({
-                            functionResponses: { id: fc.id, name: fc.name, response: result }
-                          });
-                      }
-                    });
+                if (isSessionActive.current && sessionRef.current) {
+                  try { sessionRef.current.sendToolResponse({ functionResponses: { id: fc.id, name: fc.name, response: result } }); } catch(e) {}
                 }
               }
             }
@@ -414,6 +387,7 @@ export default function App() {
           }
         }
       });
+      sessionRef.current = await sessionPromise;
     } catch (e: any) {
       isSessionActive.current = false;
       addLog(`Setup Error: ${e.message}`, 'System', 'error');
