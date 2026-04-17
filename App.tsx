@@ -303,10 +303,15 @@ export default function App() {
           speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Puck' } } }
         },
         callbacks: {
-          onopen: () => {
+          onopen: async () => {
             addLog('Connected to Gemini', 'System', 'success');
             setConnectionState(ConnectionState.CONNECTED);
             isSessionActive.current = true;
+            
+            // Wait for session to be ready
+            const session = await sessionPromise;
+            sessionRef.current = session;
+            
             if(processorRef.current) {
               processorRef.current.onaudioprocess = (e) => {
                 if (!isSessionActive.current || !sessionRef.current) return;
@@ -387,7 +392,6 @@ export default function App() {
           }
         }
       });
-      sessionRef.current = await sessionPromise;
     } catch (e: any) {
       isSessionActive.current = false;
       addLog(`Setup Error: ${e.message}`, 'System', 'error');
