@@ -303,23 +303,12 @@ export default function App() {
           speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Puck' } } }
         },
         callbacks: {
-          onopen: async () => {
+          onopen: () => {
             addLog('Connected to Gemini', 'System', 'success');
             setConnectionState(ConnectionState.CONNECTED);
             isSessionActive.current = true;
             
-            // Wait for session to be ready
-            const session = await sessionPromise;
-            sessionRef.current = session;
-            
-            if(processorRef.current) {
-              processorRef.current.onaudioprocess = (e) => {
-                if (!isSessionActive.current || !sessionRef.current) return;
-                const inputData = e.inputBuffer.getChannelData(0);
-                const pcmBlob = createPcmBlob(inputData);
-                try { sessionRef.current.sendRealtimeInput({ media: pcmBlob }); } catch(err) {}
-              };
-            }
+            // Audio processor will be set up after session is ready
           },
           onmessage: async (msg: LiveServerMessage) => {
             if (msg.toolCall && msg.toolCall.functionCalls) {
@@ -392,6 +381,19 @@ export default function App() {
           }
         }
       });
+      
+      // Wait for session to be ready, then set up audio processor
+      const session = await sessionPromise;
+      sessionRef.current = session;
+      
+      if(processorRef.current && isSessionActive.current) {
+        processorRef.current.onaudioprocess = (e) => {
+          if (!isSessionActive.current || !sessionRef.current) return;
+          const inputData = e.inputBuffer.getChannelData(0);
+          const pcmBlob = createPcmBlob(inputData);
+          try { sessionRef.current.sendRealtimeInput({ media: pcmBlob }); } catch(err) {}
+        };
+      }
     } catch (e: any) {
       isSessionActive.current = false;
       addLog(`Setup Error: ${e.message}`, 'System', 'error');
