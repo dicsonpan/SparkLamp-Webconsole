@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import mqtt from 'mqtt';
-import { Room, RoomEvent, VideoPresets, Track, LocalTrackPublication } from 'livekit-client';
 import { GoogleGenAI, LiveServerMessage, Modality } from '@google/genai';
 import { 
   ACTION_MAPPING, 
@@ -11,7 +10,6 @@ import {
 } from './constants';
 import { AppConfig, ConnectionState, LogEntry } from './types';
 import { createPcmBlob, base64ToFloat32Array } from './utils/audio';
-import { generateLiveKitToken } from './utils/token';
 import SettingsModal from './components/SettingsModal';
 import LampVisualizer from './components/LampVisualizer';
 
@@ -47,18 +45,16 @@ export default function App() {
   // Refs
   const configRef = useRef<AppConfig | null>(null);
   const mqttClientRef = useRef<mqtt.MqttClient | null>(null);
-  const livekitRoomRef = useRef<Room | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const outputNodeRef = useRef<GainNode | null>(null);
   const nextStartTimeRef = useRef<number>(0);
-  
-  // New Refs
-  const sessionRef = useRef<any>(null); // To access session outside closures
-  const isSessionActive = useRef(false); // Guard for WebSocket state
+  const sessionRef = useRef<any>(null);
+  const isSessionActive = useRef(false);
   const videoCanvasRef = useRef<HTMLCanvasElement>(document.createElement('canvas'));
   const videoIntervalRef = useRef<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const localStreamRef = useRef<MediaStream | null>(null);
 
   // Helper to add logs
   const addLog = (message: string, source: LogEntry['source'], type: LogEntry['type'] = 'info') => {
@@ -125,17 +121,8 @@ export default function App() {
   // --- CHAT & UPLOAD LOGIC ---
   const handleSendMessage = () => {
     if (!chatInput.trim() || !sessionRef.current || !isSessionActive.current) return;
-    
     try {
-      sessionRef.current.send({
-          clientContent: {
-              turns: [{
-                  role: 'user',
-                  parts: [{ text: chatInput }]
-              }],
-              turnComplete: true
-          }
-      });
+      sessionRef.current.sendClientContent({ turns: chatInput, turnComplete: true });
       addLog(chatInput, 'User', 'info');
       setChatInput('');
     } catch (e) {
@@ -242,30 +229,16 @@ export default function App() {
   };
 
   const connectToLiveKit = async (cfg: AppConfig) => {
-    if (!cfg.livekitUrl || !cfg.livekitApiKey || !cfg.livekitApiSecret) {
-      addLog('LiveKit skipped (Missing credentials)', 'LiveKit', 'info');
-      return null;
-    }
+    // LiveKit removed - using browser camera directly
+    if (!videoRef) return;
+    
     try {
-      addLog('Connecting to LiveKit Room...', 'LiveKit', 'info');
-      const token = await generateLiveKitToken(cfg.livekitApiKey, cfg.livekitApiSecret, "Web-Controller", "room-01");
-      const room = new Room({ adaptiveStream: true, dynacast: true });
-      await room.connect(cfg.livekitUrl, token);
-      addLog(`Joined Room: ${room.name}`, 'LiveKit', 'success');
-      await room.localParticipant.enableCameraAndMicrophone();
-      addLog('Published Camera & Mic to Room', 'LiveKit', 'success');
-      
-      const tracks = Array.from(room.localParticipant.trackPublications.values())
-        .filter((pub: any) => pub.kind === Track.Kind.Video);
-      if (tracks.length > 0 && videoRef) {
-         const trackPub = tracks[0] as LocalTrackPublication;
-         trackPub.track?.attach(videoRef);
-      }
-      livekitRoomRef.current = room;
-      return room;
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      localStreamRef.current = stream;
+      videoRef.srcObject = stream;
+      addLog('Camera enabled', 'System', 'success');
     } catch (e: any) {
-      addLog(`LiveKit Connection Failed: ${e.message}`, 'LiveKit', 'error');
-      return null;
+      addLog(`Camera access failed: ${e.message}`, 'System', 'error');
     }
   };
 
@@ -409,13 +382,14 @@ export default function App() {
   };
   
   const disconnect = () => {
-     isSessionActive.current = false; // Kill guard immediately
+     isSessionActive.current = false;
      
      if(mqttClientRef.current) mqttClientRef.current.end();
-     if(livekitRoomRef.current) livekitRoomRef.current.disconnect();
+     if(localStreamRef.current) {
+       localStreamRef.current.getTracks().forEach(track => track.stop());
+     }
      if(audioContextRef.current) audioContextRef.current.close();
      
-     // Stop processor
      if(processorRef.current) {
         processorRef.current.disconnect();
         processorRef.current.onaudioprocess = null;
@@ -427,15 +401,12 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (livekitRoomRef.current && videoRef) {
-       const tracks = Array.from(livekitRoomRef.current.localParticipant.trackPublications.values())
-        .filter((pub: any) => pub.kind === Track.Kind.Video);
-       if (tracks.length > 0) {
-          const trackPub = tracks[0] as LocalTrackPublication;
-          trackPub.track?.attach(videoRef);
-       }
-    }
-  }, [videoRef, connectionState]);
+    return () => {
+      if(localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, []);
 
   return (
     <div className="min-h-screen flex flex-col items-center p-6 relative overflow-hidden font-sans">
@@ -451,7 +422,7 @@ export default function App() {
           </div>
           <div>
             <h1 className="text-2xl font-bold text-white tracking-tight">SparkLamp</h1>
-            <p className="text-xs text-slate-400">LiveKit + Gemini Controller</p>
+            <p className="text-xs text-slate-400">Gemini Live API Controller</p>
           </div>
         </div>
         <div className="flex items-center gap-4">
@@ -480,42 +451,40 @@ export default function App() {
              <LampVisualizer lastAction={lastAction} isLightOn={isLightOn} isSpeaking={isSpeaking} />
              
              {/* Video Feed & Vision Controls */}
-             {config?.livekitUrl && (
-               <div className="absolute top-4 right-4 flex flex-col items-end gap-2">
-                   <div className="w-32 h-24 bg-black rounded-lg overflow-hidden border border-slate-700 shadow-lg relative group">
-                      <video 
-                        ref={setVideoRef} 
-                        className="w-full h-full object-cover transform -scale-x-100" 
-                        autoPlay 
-                        muted 
-                        playsInline 
-                      />
-                      <div className="absolute bottom-0 inset-x-0 bg-black/60 text-[8px] text-white text-center py-0.5">
-                        {isVideoEnabled ? '👁️ AI Watching' : '🙈 Vision Off'}
-                      </div>
-                      <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                         <button 
-                           onClick={handleSnapshot}
-                           className="bg-white/20 hover:bg-white/40 p-1.5 rounded-full backdrop-blur-sm"
-                           title="Take Snapshot"
-                         >
-                            📷
-                         </button>
-                      </div>
-                   </div>
-                   
-                   <button 
-                     onClick={() => setIsVideoEnabled(!isVideoEnabled)}
-                     className={`text-[10px] px-2 py-1 rounded-full border transition-all ${
-                         isVideoEnabled 
-                         ? 'bg-purple-500/20 text-purple-300 border-purple-500/50 animate-pulse' 
-                         : 'bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700'
-                     }`}
-                   >
-                     {isVideoEnabled ? 'Stop Broadcasting' : 'Broadcast Video to AI'}
-                   </button>
-               </div>
-             )}
+             <div className="absolute top-4 right-4 flex flex-col items-end gap-2">
+                 <div className="w-32 h-24 bg-black rounded-lg overflow-hidden border border-slate-700 shadow-lg relative group">
+                    <video 
+                      ref={setVideoRef} 
+                      className="w-full h-full object-cover transform -scale-x-100" 
+                      autoPlay 
+                      muted 
+                      playsInline 
+                    />
+                    <div className="absolute bottom-0 inset-x-0 bg-black/60 text-[8px] text-white text-center py-0.5">
+                      {isVideoEnabled ? '👁️ AI Watching' : '🙈 Vision Off'}
+                    </div>
+                    <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                       <button 
+                         onClick={handleSnapshot}
+                         className="bg-white/20 hover:bg-white/40 p-1.5 rounded-full backdrop-blur-sm"
+                         title="Take Snapshot"
+                       >
+                          📷
+                       </button>
+                    </div>
+                 </div>
+                 
+                 <button 
+                   onClick={() => setIsVideoEnabled(!isVideoEnabled)}
+                   className={`text-[10px] px-2 py-1 rounded-full border transition-all ${
+                       isVideoEnabled 
+                       ? 'bg-purple-500/20 text-purple-300 border-purple-500/50 animate-pulse' 
+                       : 'bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700'
+                   }`}
+                 >
+                   {isVideoEnabled ? 'Stop Broadcasting' : 'Broadcast Video to AI'}
+                 </button>
+             </div>
           </div>
 
           <div className="grid grid-cols-4 gap-2">
@@ -652,9 +621,6 @@ export default function App() {
             {activeTab === 'logs' && (
                 <div className="bg-slate-900/90 border-t border-slate-800 p-3 flex items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
-                    <span className={`text-[10px] uppercase tracking-wider font-bold ${config?.livekitUrl ? 'text-pink-400' : 'text-slate-600'}`}>
-                        {config?.livekitUrl ? '• LiveKit Active' : '• LiveKit Inactive'}
-                    </span>
                     <span className="text-[10px] uppercase tracking-wider font-bold text-orange-400">
                         • MQTT Active
                     </span>
