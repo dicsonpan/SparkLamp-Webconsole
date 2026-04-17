@@ -51,6 +51,7 @@ export default function App() {
   const nextStartTimeRef = useRef<number>(0);
   const sessionRef = useRef<any>(null);
   const isSessionActive = useRef(false);
+  const isWebSocketOpen = useRef(false); // New flag to track WebSocket state
   const videoCanvasRef = useRef<HTMLCanvasElement>(document.createElement('canvas'));
   const videoIntervalRef = useRef<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -69,7 +70,7 @@ export default function App() {
 
   // --- VISION LOGIC ---
   const sendVideoFrame = async () => {
-    if (!videoRef || !sessionRef.current || !isVideoEnabled || !isSessionActive.current) return;
+    if (!videoRef || !sessionRef.current || !isVideoEnabled || !isSessionActive.current || !isWebSocketOpen.current) return;
     
     const canvas = videoCanvasRef.current;
     const ctx = canvas.getContext('2d');
@@ -120,7 +121,7 @@ export default function App() {
 
   // --- CHAT & UPLOAD LOGIC ---
   const handleSendMessage = () => {
-    if (!chatInput.trim() || !sessionRef.current || !isSessionActive.current) return;
+    if (!chatInput.trim() || !sessionRef.current || !isSessionActive.current || !isWebSocketOpen.current) return;
     try {
       sessionRef.current.sendClientContent({ turns: chatInput, turnComplete: true });
       addLog(chatInput, 'User', 'info');
@@ -132,7 +133,7 @@ export default function App() {
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !sessionRef.current || !isSessionActive.current) return;
+    if (!file || !sessionRef.current || !isSessionActive.current || !isWebSocketOpen.current) return;
 
     addLog(`Uploading image: ${file.name}...`, 'System', 'info');
 
@@ -162,7 +163,7 @@ export default function App() {
   };
 
   const handleSnapshot = () => {
-      if (!videoRef || !sessionRef.current || !isSessionActive.current) {
+      if (!videoRef || !sessionRef.current || !isSessionActive.current || !isWebSocketOpen.current) {
           addLog("Camera not ready", "System", "error");
           return;
       }
@@ -246,8 +247,8 @@ export default function App() {
     try {
       setConnectionState(ConnectionState.CONNECTING);
       
-      // Reset state guards
       isSessionActive.current = false;
+      isWebSocketOpen.current = false; // Reset WebSocket flag
       
       await connectToMqtt(currentConfig.mqttTopic);
       await connectToLiveKit(currentConfig);
@@ -280,6 +281,7 @@ export default function App() {
             addLog('Connected to Gemini', 'System', 'success');
             setConnectionState(ConnectionState.CONNECTED);
             isSessionActive.current = true;
+            isWebSocketOpen.current = true; // Mark WebSocket as open
           },
           onmessage: async (msg: LiveServerMessage) => {
             if (msg.toolCall && msg.toolCall.functionCalls) {
@@ -333,10 +335,9 @@ export default function App() {
             }
           },
           onclose: () => {
-            // Immediate guard to stop audio loop
             isSessionActive.current = false;
+            isWebSocketOpen.current = false; // Mark WebSocket as closed
             
-            // Disconnect processor immediately to stop firing events
             if (processorRef.current) {
                 processorRef.current.disconnect();
                 processorRef.current.onaudioprocess = null;
@@ -362,7 +363,7 @@ export default function App() {
       
       if(processorRef.current && isSessionActive.current) {
         processorRef.current.onaudioprocess = (e) => {
-          if (!isSessionActive.current || !sessionRef.current) return;
+          if (!isSessionActive.current || !sessionRef.current || !isWebSocketOpen.current) return;
           const inputData = e.inputBuffer.getChannelData(0);
           const pcmBlob = createPcmBlob(inputData);
           try { sessionRef.current.sendRealtimeInput({ media: pcmBlob }); } catch(err) {}
