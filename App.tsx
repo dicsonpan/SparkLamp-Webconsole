@@ -277,11 +277,29 @@ export default function App() {
           speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Puck' } } }
         },
         callbacks: {
-          onopen: () => {
+          onopen: async () => {
             addLog('Connected to Gemini', 'System', 'success');
             setConnectionState(ConnectionState.CONNECTED);
             isSessionActive.current = true;
-            isWebSocketOpen.current = true; // Mark WebSocket as open
+            isWebSocketOpen.current = true;
+            
+            // Wait for session promise to resolve
+            try {
+              const session = await sessionPromise;
+              sessionRef.current = session;
+              
+              // Now set up audio processor
+              if(processorRef.current && isSessionActive.current) {
+                processorRef.current.onaudioprocess = (e) => {
+                  if (!isSessionActive.current || !sessionRef.current || !isWebSocketOpen.current) return;
+                  const inputData = e.inputBuffer.getChannelData(0);
+                  const pcmBlob = createPcmBlob(inputData);
+                  try { sessionRef.current.sendRealtimeInput({ media: pcmBlob }); } catch(err) {}
+                };
+              }
+            } catch(e) {
+              addLog('Failed to initialize session', 'System', 'error');
+            }
           },
           onmessage: async (msg: LiveServerMessage) => {
             if (msg.toolCall && msg.toolCall.functionCalls) {
@@ -354,21 +372,8 @@ export default function App() {
         }
       });
       
-      // Wait for session to be ready, then set up audio processor
-      const session = await sessionPromise;
-      sessionRef.current = session;
-      
-      // Add a small delay to ensure WebSocket is fully ready
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
-      if(processorRef.current && isSessionActive.current) {
-        processorRef.current.onaudioprocess = (e) => {
-          if (!isSessionActive.current || !sessionRef.current || !isWebSocketOpen.current) return;
-          const inputData = e.inputBuffer.getChannelData(0);
-          const pcmBlob = createPcmBlob(inputData);
-          try { sessionRef.current.sendRealtimeInput({ media: pcmBlob }); } catch(err) {}
-        };
-      }
+      // Session will be set in onopen callback
+      await sessionPromise; // Just wait for it to complete
     } catch (e: any) {
       isSessionActive.current = false;
       addLog(`Setup Error: ${e.message}`, 'System', 'error');
