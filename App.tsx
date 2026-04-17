@@ -295,7 +295,7 @@ export default function App() {
 
       const ai = new GoogleGenAI({ apiKey: currentConfig.googleApiKey });
       const sessionPromise = ai.live.connect({
-        model: 'gemini-2.5-flash-native-audio-preview-12-2025',
+        model: 'gemini-3.1-flash-live-preview',
         config: {
           tools: TOOLS,
           responseModalities: [Modality.AUDIO],
