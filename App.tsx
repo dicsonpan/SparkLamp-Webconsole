@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import mqtt from 'mqtt';
 import { GoogleGenAI, LiveServerMessage, Modality } from '@google/genai';
+import { Analytics } from '@vercel/analytics/react';
 import { 
   ACTION_MAPPING, 
   DEFAULT_MQTT_BROKER, 
@@ -648,6 +649,7 @@ export default function App() {
         </div>
 
       </main>
+      <Analytics />
     </div>
   );
 }
